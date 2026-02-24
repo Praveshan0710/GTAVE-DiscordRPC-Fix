@@ -33,7 +33,6 @@ bool Init()
         }
         WaitForSingleObject(hProcess, INFINITE);
         CloseHandle(hProcess);
-        return true;
     }
     return true;
 }
@@ -41,9 +40,15 @@ bool Init()
 int main()
 {
     if (!Init()) return 1;
-
+    bool isAdmin = IsRunningAsAdmin();
     for (const auto& path : GetGTAInstallPaths())
-        RemoveTitleRgl(path);
+    {
+        if (!RemoveTitleRgl(path) && isAdmin)
+        {
+            GrantFullControlToUsers(path);
+            RemoveTitleRgl(path);
+        }
+    }
 
     std::wcout << L"Ready. Launch GTA V Enhanced.\n";
 
@@ -81,7 +86,6 @@ int main()
                 gameClosed = true;
                 break;
             }
-            //std::wcout << L"Still waiting\n";
 
             auto currentHandles = GetProcessHandles(pid);
 
@@ -99,14 +103,34 @@ int main()
 
         if (gameClosed)
         {
-            std::wcerr << L"GTA closed before opening title.rgl. Waiting for next game launch.\n";
+            std::wcerr << L"GTA closed before initializing. Waiting for next game launch.\n";
             CloseHandle(hProcess);
             continue;
         }
 
-        std::wcout << L"File handle to title.rgl opened.\n";
-
-        CopyFileW(targetFile.c_str(), copiedFile.c_str(), FALSE);
+        if (!CopyFileW(targetFile.c_str(), copiedFile.c_str(), FALSE))
+        {
+            if (GetLastError() == ERROR_ACCESS_DENIED)
+            {
+                if (isAdmin)
+                {
+                    GrantFullControlToUsers(dir);
+                    if (!CopyFileW(targetFile.c_str(), copiedFile.c_str(), FALSE))
+                    {
+                        std::wcerr << L"Failed to write to " << dir << L"\nError " << GetLastError() << std::endl;
+                        PauseExit();
+                        return 1;
+                    }
+                }
+                else
+                {
+                    std::wcerr << L"You don't have permission to modify the game directory.\n"
+                        << L"Please start this application as an administator at least once or get permission to modify " << dir << std::endl;
+                    PauseExit();
+                    return 1;
+                }
+            }
+        }
 
         WaitForSingleObject(hProcess, INFINITE);
         CloseHandle(hProcess);

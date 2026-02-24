@@ -1,7 +1,7 @@
 #include "nt.h"
 #include "utils.h"
 
-std::pair<DWORD, std::wstring> FindProcessAndPath(const std::wstring& processName)
+std::pair<DWORD, std::wstring> FindProcessAndPath(const std::wstring_view processName)
 {
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 
@@ -16,19 +16,16 @@ std::pair<DWORD, std::wstring> FindProcessAndPath(const std::wstring& processNam
 
     do
     {
-        if (!_wcsicmp(pe.szExeFile, processName.c_str()))
+        if (!_wcsicmp(pe.szExeFile, processName.data()))
         {
-            HANDLE hProcess =
-                OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
-                    FALSE, pe.th32ProcessID);
+            HANDLE hProcess =OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pe.th32ProcessID);
 
             if (hProcess)
             {
                 wchar_t path[MAX_PATH];
                 DWORD size = MAX_PATH;
 
-                if (QueryFullProcessImageNameW(
-                    hProcess, 0, path, &size))
+                if (QueryFullProcessImageNameW(hProcess, 0, path, &size))
                 {
                     CloseHandle(hProcess);
                     CloseHandle(snap);
@@ -89,10 +86,9 @@ std::set<ULONG_PTR> GetProcessHandles(DWORD pid)
     return result;
 }
 
-bool CheckHandlesForFile(DWORD pid, const std::set<ULONG_PTR>& newHandles, const std::wstring& targetFile)
+bool CheckHandlesForFile(DWORD pid, const std::set<ULONG_PTR>& newHandles, const std::wstring_view targetFile)
 {
-    HANDLE hProcess =
-        OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid);
+    HANDLE hProcess = OpenProcess(PROCESS_DUP_HANDLE, FALSE, pid);
 
     if (!hProcess)
         return false;
@@ -130,7 +126,7 @@ bool CheckHandlesForFile(DWORD pid, const std::set<ULONG_PTR>& newHandles, const
         {
             std::wstring handleFile = NormalizePathForComparison(path);
 
-            if (!_wcsicmp(handleFile.c_str(), targetFile.c_str()))
+            if (!_wcsicmp(handleFile.c_str(), targetFile.data()))
             {
                 CloseHandle(dupHandle);
                 CloseHandle(hProcess);
@@ -178,9 +174,9 @@ std::wstring GetProcessCommandLine(DWORD pid)
     return cmdline;
 }
 
-bool HasForceWin32InFile(const std::wstring& dir, const std::wstring& filename)
+bool HasForceWin32InFile(const std::wstring& dir, const std::wstring_view filename)
 {
-    std::wstring path = dir + L"\\" + filename;
+    std::wstring path = dir + L"\\" + filename.data();
 
     std::wifstream file(path);
     if (!file.is_open()) return false;
@@ -345,76 +341,80 @@ bool IsUsingDirectStorage(DWORD pid, const std::wstring& exePath, const std::wst
 std::vector<std::wstring> GetGTAInstallPaths()
 {
     std::vector<std::wstring> paths;
-    HKEY hKey{};
-    const wchar_t* subkey = L"SOFTWARE\\WOW6432Node\\Rockstar Games\\GTA V Enhanced";
 
-    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+    for (const auto* subkey : GTA::InstallRegistryKeys)
     {
-        std::wcerr << L"Install path Registry key not found.\n";
-        return paths;
-    }
+        HKEY hKey{};
 
-    DWORD index = 0;
-    wchar_t valueName[256];
-    BYTE data[1024];
-
-    while (true)
-    {
-        DWORD valueNameSize = _countof(valueName);
-        DWORD dataSize = sizeof(data);
-        DWORD type = 0;
-
-        auto result = RegEnumValueW(hKey,index++, valueName, &valueNameSize, NULL, &type, data, &dataSize);
-
-        if (result == ERROR_NO_MORE_ITEMS)
-            break;
-
-        if (result != ERROR_SUCCESS)
+        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
             continue;
 
-        if (type != REG_SZ)
-            continue;
+        DWORD index = 0;
+        wchar_t valueName[256];
+        BYTE data[1024];
 
-        std::wstring name(valueName);
-
-        // InstallFolder / InstallFolderSteam / InstallFolderEpic / InstallFolderXbox(?)
-        if (name.find(L"InstallFolder") == std::wstring::npos)
-            continue;
-
-        std::wstring installPath(reinterpret_cast<wchar_t*>(data));
-        while (!installPath.empty() && (installPath.back() == L'\\' || installPath.back() == L'/'))
-            installPath.pop_back();
-
-        std::wstring exePath = installPath + L"\\gta5_enhanced.exe";
-
-        DWORD attr = GetFileAttributesW(exePath.c_str());
-
-        if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY))
+        while (true)
         {
-            paths.push_back(installPath);
-        }
-    }
+            DWORD valueNameSize = _countof(valueName);
+            DWORD dataSize = sizeof(data);
+            DWORD type = 0;
 
-    RegCloseKey(hKey);
+            LONG result = RegEnumValueW(hKey, index++, valueName, &valueNameSize, nullptr, &type, data, &dataSize);
+
+            if (result == ERROR_NO_MORE_ITEMS) break;
+
+            if (result != ERROR_SUCCESS || type != REG_SZ) continue;
+
+            std::wstring name(valueName);
+
+            if (name.find(L"InstallFolder") == std::wstring::npos)
+                continue;
+
+            std::wstring installPath(reinterpret_cast<wchar_t*>(data));
+
+            while (!installPath.empty() && (installPath.back() == L'\\' || installPath.back() == L'/'))
+                installPath.pop_back();
+
+            std::wstring exePath = installPath + L"\\" + GTA::ProcessName;
+
+            DWORD attr = GetFileAttributesW(exePath.c_str());
+
+            if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY))
+                paths.push_back(std::move(installPath));
+        }
+        RegCloseKey(hKey);
+    }
+    if (paths.empty())
+        std::wcerr << "Could find any game install paths by registry.\n";
+
     return paths;
 }
 
-void RemoveTitleRgl(const std::wstring& installPath)
+bool RemoveTitleRgl(const std::wstring& installPath)
 {
     std::wstring file = installPath + L"\\update\\x64\\title.rgl";
 
-    DWORD attr = GetFileAttributesW(file.c_str());
-
-    if (attr == INVALID_FILE_ATTRIBUTES)
+    if (!DeleteFileW(file.c_str()))
     {
-        //std::wcout << L"No title.rgl at:\n" << file << L"\n";
-        return;
-    }
+        switch (DWORD err = GetLastError())
+        {
+        case ERROR_FILE_NOT_FOUND:
+            return true;
 
-    if (DeleteFileW(file.c_str()))
-        std::wcout << L"Removed " << file << L"\n";
-    else
-        std::wcerr << L"Could not remove:\n" << file << L"\nError: " << GetLastError() << L"\n";
+        case ERROR_ACCESS_DENIED:
+            std::wcerr << L"Access denied: " << file << L"\n";
+            return false;
+
+        case ERROR_SHARING_VIOLATION:
+            std::wcerr << L"File in use: " << file << L"\n";
+            return false;
+
+        default:
+            std::wcerr << L"Delete failed: " << file << L"  error " << err << L"\n";
+            return false;
+        }
+    }
+    return true;
 }
 
 void PauseExit()
@@ -422,4 +422,66 @@ void PauseExit()
     std::wcout << L"Press enter to exit.\n";
     std::string dummy;
     std::getline(std::cin, dummy);
+}
+
+bool IsRunningAsAdmin()
+{
+    BOOL elevated = FALSE;
+
+    HANDLE token = nullptr;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+    {
+        TOKEN_ELEVATION elevation{};
+        DWORD size;
+
+        if (GetTokenInformation(token, TokenElevation, &elevation, sizeof(elevation), &size))
+            elevated = elevation.TokenIsElevated;
+
+        CloseHandle(token);
+    }
+
+    return elevated;
+}
+
+bool GrantFullControlToUsers(const std::wstring& folderPath)
+{
+    DWORD attr = GetFileAttributesW(folderPath.c_str());
+    if (attr == INVALID_FILE_ATTRIBUTES || !(attr & FILE_ATTRIBUTE_DIRECTORY))
+    {
+        std::wcerr << L"Folder does not exist: " << folderPath << std::endl;
+        return false;
+    }
+
+    PSECURITY_DESCRIPTOR pSD = nullptr;
+    PACL pOldDACL = nullptr;
+
+    if (GetNamedSecurityInfoW(folderPath.c_str(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+        nullptr, nullptr, &pOldDACL, nullptr, &pSD) != ERROR_SUCCESS)
+    {
+        std::wcerr << L"Failed to get DACL for folder.\n";
+        return false;
+    }
+
+    EXPLICIT_ACCESSW ea{};
+    ea.grfAccessPermissions = GENERIC_ALL;
+    ea.grfAccessMode = GRANT_ACCESS;
+    ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+    ea.Trustee.TrusteeForm = TRUSTEE_IS_NAME;
+    ea.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+    ea.Trustee.ptstrName = (LPWSTR)L"Users";
+
+    PACL pNewDACL = nullptr;
+    if (SetEntriesInAclW(1, &ea, pOldDACL, &pNewDACL) != ERROR_SUCCESS)
+    {
+        if (pSD) LocalFree(pSD);
+        std::wcerr << L"Failed to create new ACL.\n";
+        return false;
+    }
+
+    bool success = SetNamedSecurityInfoW((LPWSTR)folderPath.c_str(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr, pNewDACL, nullptr) == ERROR_SUCCESS;
+
+    if (pNewDACL) LocalFree(pNewDACL);
+    if (pSD) LocalFree(pSD);
+
+    return success;
 }

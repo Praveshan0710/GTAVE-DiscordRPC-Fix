@@ -14,7 +14,6 @@ typedef VOID(NTAPI* RtlGetNtVersionNumbers_t)(LPDWORD, LPDWORD, LPDWORD);
 
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #define STATUS_INFO_LENGTH_MISMATCH ((NTSTATUS)0xC0000004L)
-//#define SystemExtendedHandleInformation 64
 
 typedef struct _OBJECT_TYPE_INFORMATION
 {
