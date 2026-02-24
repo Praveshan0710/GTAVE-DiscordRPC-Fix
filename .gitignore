@@ -1,0 +1,15 @@
+.vs/
+*.VC.db
+*.VC.opendb
+
+x64/
+Debug/
+Release/
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.dll
+
+*.user
+*.suo
