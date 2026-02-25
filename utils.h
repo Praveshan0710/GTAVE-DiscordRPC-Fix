@@ -41,4 +41,5 @@ std::vector<std::wstring> GetGTAInstallPaths();
 bool RemoveTitleRgl(const std::wstring& installPath);
 void PauseExit();
 bool IsRunningAsAdmin();
-bool GrantFullControlToUsers(const std::wstring& folderPath);
+bool UsersHaveModifyAccess(PACL dacl, PSID usersSID);
+bool GrantModifyAccessToUsers(const std::wstring& folderPath);

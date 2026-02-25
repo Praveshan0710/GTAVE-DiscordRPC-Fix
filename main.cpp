@@ -43,11 +43,8 @@ int main()
     bool isAdmin = IsRunningAsAdmin();
     for (const auto& path : GetGTAInstallPaths())
     {
-        if (!RemoveTitleRgl(path) && isAdmin)
-        {
-            GrantFullControlToUsers(path);
-            RemoveTitleRgl(path);
-        }
+        if (isAdmin) GrantModifyAccessToUsers(path);
+        RemoveTitleRgl(path);
     }
 
     std::wcout << L"Ready. Launch GTA V Enhanced.\n";
@@ -95,8 +92,7 @@ int main()
                 if (!previousHandles.contains(h))
                     newHandles.insert(h);
 
-            if (!newHandles.empty())
-                detected = CheckHandlesForFile(pid, newHandles, targetFile);
+            if (!newHandles.empty()) detected = CheckHandlesForFile(pid, newHandles, targetFile);
 
             previousHandles = std::move(currentHandles);
         }
@@ -108,35 +104,30 @@ int main()
             continue;
         }
 
+        if (isAdmin) GrantModifyAccessToUsers(dir);
+
         if (!CopyFileW(targetFile.c_str(), copiedFile.c_str(), FALSE))
         {
-            if (GetLastError() == ERROR_ACCESS_DENIED)
+            DWORD err = GetLastError();
+            if (err == ERROR_ACCESS_DENIED)
             {
-                if (isAdmin)
-                {
-                    GrantFullControlToUsers(dir);
-                    if (!CopyFileW(targetFile.c_str(), copiedFile.c_str(), FALSE))
-                    {
-                        std::wcerr << L"Failed to write to " << dir << L"\nError " << GetLastError() << std::endl;
-                        PauseExit();
-                        return 1;
-                    }
-                }
-                else
-                {
-                    std::wcerr << L"You don't have permission to modify the game directory.\n"
-                        << L"Please start this application as an administator at least once or get permission to modify " << dir << std::endl;
-                    PauseExit();
-                    return 1;
-                }
+                std::wcerr << L"You don't have permission to modify the game directory.\n"
+                    << L"Please start this application as an administator at least once or get permission to modify " << dir << std::endl;
+                PauseExit();
+                return 1;
+            }
+            else
+            {
+                std::wcerr << L"CopyFileW failed. Error: " << err << std::endl;
+                PauseExit();
+                return 1;
             }
         }
 
         WaitForSingleObject(hProcess, INFINITE);
         CloseHandle(hProcess);
 
-        if (!DeleteFileW(copiedFile.c_str()))
-            std::wcerr << L"Failed to remove " << copiedFile.c_str() << std::endl;
+        if (!DeleteFileW(copiedFile.c_str())) std::wcerr << L"Failed to remove " << copiedFile.c_str() << std::endl;
 
         std::wcout << L"Game closed. Waiting for next game launch.\n";
     }

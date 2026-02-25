@@ -443,7 +443,40 @@ bool IsRunningAsAdmin()
     return elevated;
 }
 
-bool GrantFullControlToUsers(const std::wstring& folderPath)
+bool UsersHaveModifyAccess(PACL dacl, PSID usersSID)
+{
+    if (!dacl) return false;
+
+    for (DWORD i = 0; i < dacl->AceCount; ++i)
+    {
+        LPVOID ace = nullptr;
+
+        if (!GetAce(dacl, i, &ace))
+            continue;
+
+        ACE_HEADER* header = (ACE_HEADER*)ace;
+
+        if (header->AceType != ACCESS_ALLOWED_ACE_TYPE)
+            continue;
+
+        ACCESS_ALLOWED_ACE* allowed = (ACCESS_ALLOWED_ACE*)ace;
+
+        PSID aceSID = &allowed->SidStart;
+
+        if (!EqualSid(aceSID, usersSID)) continue;
+
+        DWORD mask = allowed->Mask;
+
+        DWORD modifyMask = FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE | SYNCHRONIZE;
+
+        if ((mask & modifyMask) == modifyMask)
+            return true;
+    }
+
+    return false;
+}
+
+bool GrantModifyAccessToUsers(const std::wstring& folderPath)
 {
     DWORD attr = GetFileAttributesW(folderPath.c_str());
     if (attr == INVALID_FILE_ATTRIBUTES || !(attr & FILE_ATTRIBUTE_DIRECTORY))
@@ -452,36 +485,79 @@ bool GrantFullControlToUsers(const std::wstring& folderPath)
         return false;
     }
 
-    PSECURITY_DESCRIPTOR pSD = nullptr;
-    PACL pOldDACL = nullptr;
+    BYTE sidBuffer[SECURITY_MAX_SID_SIZE];
+    PSID usersSID = sidBuffer;
+    DWORD sidSize = sizeof(sidBuffer);
 
-    if (GetNamedSecurityInfoW(folderPath.c_str(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
-        nullptr, nullptr, &pOldDACL, nullptr, &pSD) != ERROR_SUCCESS)
+    if (!CreateWellKnownSid(WinBuiltinUsersSid, nullptr, usersSID, &sidSize))
     {
-        std::wcerr << L"Failed to get DACL for folder.\n";
+        std::wcerr << L"CreateWellKnownSid failed: " << GetLastError() << std::endl;
         return false;
+    }
+
+    PACL oldDACL = nullptr;
+    PSECURITY_DESCRIPTOR sd = nullptr;
+
+    DWORD result = GetNamedSecurityInfoW(
+        folderPath.c_str(),
+        SE_FILE_OBJECT,
+        DACL_SECURITY_INFORMATION,
+        nullptr,
+        nullptr,
+        &oldDACL,
+        nullptr,
+        &sd);
+
+    if (result != ERROR_SUCCESS)
+    {
+        std::wcerr << L"GetNamedSecurityInfoW failed: " << result << std::endl;
+        return false;
+    }
+
+    if (UsersHaveModifyAccess(oldDACL, usersSID))
+    {
+        //std::wcout << L"Users already have Modify permission.\n";
+        LocalFree(sd);
+        return true;
     }
 
     EXPLICIT_ACCESSW ea{};
-    ea.grfAccessPermissions = GENERIC_ALL;
-    ea.grfAccessMode = GRANT_ACCESS;
-    ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-    ea.Trustee.TrusteeForm = TRUSTEE_IS_NAME;
-    ea.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
-    ea.Trustee.ptstrName = (LPWSTR)L"Users";
+    ea.grfAccessPermissions = FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE | SYNCHRONIZE;
 
-    PACL pNewDACL = nullptr;
-    if (SetEntriesInAclW(1, &ea, pOldDACL, &pNewDACL) != ERROR_SUCCESS)
+    ea.grfAccessMode = GRANT_ACCESS;
+    ea.grfInheritance = OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE;
+
+    ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+    ea.Trustee.TrusteeType = TRUSTEE_IS_GROUP;
+    ea.Trustee.ptstrName = (LPWSTR)usersSID;
+
+    PACL newDACL = nullptr;
+
+    result = SetEntriesInAclW(1, &ea, oldDACL, &newDACL);
+
+    if (result != ERROR_SUCCESS)
     {
-        if (pSD) LocalFree(pSD);
-        std::wcerr << L"Failed to create new ACL.\n";
+        LocalFree(sd);
+        std::wcerr << L"SetEntriesInAclW failed: " << result << std::endl;
         return false;
     }
 
-    bool success = SetNamedSecurityInfoW((LPWSTR)folderPath.c_str(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr, pNewDACL, nullptr) == ERROR_SUCCESS;
+    result = SetNamedSecurityInfoW(
+        const_cast<LPWSTR>(folderPath.c_str()),
+        SE_FILE_OBJECT,
+        DACL_SECURITY_INFORMATION,
+        nullptr,
+        nullptr,
+        newDACL,
+        nullptr);
 
-    if (pNewDACL) LocalFree(pNewDACL);
-    if (pSD) LocalFree(pSD);
+    bool success = (result == ERROR_SUCCESS);
+
+    if (!success)
+        std::wcerr << L"SetNamedSecurityInfoW failed: " << result << std::endl;
+
+    if (newDACL) LocalFree(newDACL);
+    if (sd) LocalFree(sd);
 
     return success;
 }
