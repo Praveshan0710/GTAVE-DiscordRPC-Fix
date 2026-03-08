@@ -4,15 +4,12 @@
 
 typedef NTSTATUS(NTAPI* NtQuerySystemInformation_t)(SYSTEM_INFORMATION_CLASS, PVOID, ULONG, PULONG);
 
-typedef NTSTATUS(NTAPI* NtDuplicateObject_t)(HANDLE, HANDLE, HANDLE, PHANDLE, ACCESS_MASK, ULONG, ULONG);
-
 typedef NTSTATUS(NTAPI* NtQueryObject_t)(HANDLE, OBJECT_INFORMATION_CLASS, PVOID, ULONG, PULONG);
 
 typedef NTSTATUS(NTAPI* NtQueryInformationProcess_t)(HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
 
 typedef VOID(NTAPI* RtlGetNtVersionNumbers_t)(LPDWORD, LPDWORD, LPDWORD);
 
-#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #define STATUS_INFO_LENGTH_MISMATCH ((NTSTATUS)0xC0000004L)
 
 typedef struct _OBJECT_TYPE_INFORMATION
@@ -66,7 +63,6 @@ typedef struct _SYSTEM_HANDLE_INFORMATION_EX
 struct NtApi
 {
     NtQuerySystemInformation_t NtQuerySystemInformation;
-    NtDuplicateObject_t NtDuplicateObject;
     NtQueryObject_t NtQueryObject;
     NtQueryInformationProcess_t NtQueryInformationProcess;
     RtlGetNtVersionNumbers_t RtlGetNtVersionNumbers;
