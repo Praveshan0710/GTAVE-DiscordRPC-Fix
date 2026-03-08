@@ -1,1 +1,1 @@
-Launch this tool before starting the game and leave it running in the background.
+To use this tool, launch it and leave it in the background before launching GTA V Enhanced.

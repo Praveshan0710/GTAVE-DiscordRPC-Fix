@@ -15,7 +15,6 @@ bool InitNtApi()
     }
 
     RESOLVE(NtQuerySystemInformation);
-    RESOLVE(NtDuplicateObject);
     RESOLVE(NtQueryObject);
     RESOLVE(NtQueryInformationProcess);
     RESOLVE(RtlGetNtVersionNumbers);

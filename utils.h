@@ -1,21 +1,16 @@
 #pragma once
 #include <Windows.h>
-#include <tlhelp32.h>
-#include <iostream>
-#include <set>
+#include <unordered_set>
 #include <vector>
-#include <fstream>
-#include <algorithm>
-#include <nvme.h>
 #include <string>
-#include <Aclapi.h>
-#pragma comment(lib, "Advapi32.lib")
+#include <filesystem>
+#include <optional>
 
 namespace GTA
 {
     inline constexpr wchar_t ProcessName[] = L"GTA5_enhanced.exe";
-    inline constexpr wchar_t FileName[] = L"title.rgl";
-    inline constexpr wchar_t UpdateDirName[] = L"\\update\\x64";
+    inline constexpr wchar_t TitleRgl[] = L"title.rgl";
+    inline constexpr wchar_t UpdateDirName[] = L"update\\x64";
     inline constexpr const wchar_t* FlagFiles[] = {
         L"args.txt",
         L"commandline.txt"
@@ -27,19 +22,23 @@ namespace GTA
     };
 }
 
-std::pair<DWORD, std::wstring> FindProcessAndPath(const std::wstring_view processName);
-std::wstring GetDirectoryFromPath(const std::wstring& fullPath);
-std::wstring NormalizePathForComparison(std::wstring path);
-std::set<ULONG_PTR> GetProcessHandles(DWORD pid);
-bool CheckHandlesForFile(DWORD pid, const std::set<ULONG_PTR>& newHandles, const std::wstring_view targetFile);
-std::wstring GetProcessCommandLine(DWORD pid);
-bool HasForceWin32InFile(const std::wstring& dir, const std::wstring_view filename);
+struct ProcessInfo
+{
+    DWORD pid;
+    std::filesystem::path directory;
+};
+
+std::optional<ProcessInfo> FindProcessIdAndDirectory(const wchar_t* processName);
+std::filesystem::path NormalizePathForComparison(std::wstring_view path);
+std::unordered_set<ULONG_PTR> GetProcessHandles(const DWORD pid);
+bool CheckHandlesForFile(const DWORD pid, const std::unordered_set<ULONG_PTR>& currentHandles, const std::unordered_set<ULONG_PTR>& previousHandles, const std::filesystem::path& targetFile);
+std::wstring GetProcessCommandLine(const DWORD pid);
+bool HasForceWin32InFile(const std::filesystem::path& path);
 bool IsWindows11();
-bool IsGameDriveNvme(const std::wstring& exePath);
-bool IsUsingDirectStorage(DWORD pid, const std::wstring& exePath, const std::wstring& dir);
-std::vector<std::wstring> GetGTAInstallPaths();
-bool RemoveTitleRgl(const std::wstring& installPath);
+bool IsGameDriveNvme(const std::filesystem::path& path);
+bool IsUsingDirectStorage(const DWORD pid, const std::filesystem::path& dir);
+std::vector<std::filesystem::path> GetGTAInstallDirectories();
+bool RemoveTitleRgl(const std::filesystem::path& installPath);
 void PauseExit();
 bool IsRunningAsAdmin();
-bool UsersHaveModifyAccess(PACL dacl, PSID usersSID);
-bool GrantModifyAccessToUsers(const std::wstring& folderPath);
+bool GrantModifyAccessToUsers(const std::filesystem::path& folderPath);
