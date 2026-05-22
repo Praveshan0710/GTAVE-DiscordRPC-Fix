@@ -11,6 +11,8 @@ typedef NTSTATUS(NTAPI* NtQueryInformationProcess_t)(HANDLE, PROCESSINFOCLASS, P
 typedef VOID(NTAPI* RtlGetNtVersionNumbers_t)(LPDWORD, LPDWORD, LPDWORD);
 
 #define STATUS_INFO_LENGTH_MISMATCH ((NTSTATUS)0xC0000004L)
+#define SystemExtendedHandleInformation (SYSTEM_INFORMATION_CLASS)64
+#define ProcessCommandLineInformation (PROCESSINFOCLASS)60
 
 typedef struct _OBJECT_TYPE_INFORMATION
 {

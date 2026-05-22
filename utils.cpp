@@ -97,7 +97,7 @@ std::unordered_set<ULONG_PTR> GetProcessHandles(const DWORD pid)
     ULONG retLen;
     NTSTATUS status;
 
-    while ((status = g_Nt.NtQuerySystemInformation((SYSTEM_INFORMATION_CLASS)64, buffer.data(), size, &retLen)) == STATUS_INFO_LENGTH_MISMATCH)
+    while ((status = g_Nt.NtQuerySystemInformation(SystemExtendedHandleInformation, buffer.data(), size, &retLen)) == STATUS_INFO_LENGTH_MISMATCH)
     {
         size = retLen + 0x10000;
         buffer.resize(size);
@@ -147,12 +147,8 @@ bool CheckHandlesForFile(const DWORD pid, const std::unordered_set<ULONG_PTR>& c
 
         wchar_t pathBuffer[MAX_PATH];
         DWORD len = GetFinalPathNameByHandleW(dupHandle, pathBuffer, _countof(pathBuffer), FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
-        if (len == 0 || len >= _countof(pathBuffer))
-        {
-        	CloseHandle(dupHandle);
-            continue;
-        }
         CloseHandle(dupHandle);
+        if (len == 0 || len >= _countof(pathBuffer)) continue;
 
         if (!_wcsicmp(NormalizePathForComparison(pathBuffer).c_str(), targetFile.c_str()))
         {
@@ -171,7 +167,7 @@ std::wstring GetProcessCommandLine(const DWORD pid)
     if (!hProc) return L"";
 
     ULONG len = 0;
-    NTSTATUS st = g_Nt.NtQueryInformationProcess(hProc, (PROCESSINFOCLASS)60, nullptr, 0, &len);
+    NTSTATUS st = g_Nt.NtQueryInformationProcess(hProc, ProcessCommandLineInformation, nullptr, 0, &len);
     if (st != STATUS_INFO_LENGTH_MISMATCH || len == 0)
     {
         CloseHandle(hProc);
@@ -179,14 +175,14 @@ std::wstring GetProcessCommandLine(const DWORD pid)
     }
 
     std::vector<BYTE> buf(len);
-    st = g_Nt.NtQueryInformationProcess(hProc, (PROCESSINFOCLASS)60, buf.data(), len, &len);
+    st = g_Nt.NtQueryInformationProcess(hProc, ProcessCommandLineInformation, buf.data(), len, &len);
     if (!NT_SUCCESS(st))
     {
         CloseHandle(hProc);
         return L"";
     }
 
-    auto* pStr = reinterpret_cast<PUNICODE_STRING>(buf.data());
+    const auto* pStr = reinterpret_cast<PUNICODE_STRING>(buf.data());
     if (pStr->Length == 0 || !pStr->Buffer)
     {
         CloseHandle(hProc);
@@ -305,7 +301,7 @@ bool IsUsingDirectStorage(const DWORD pid, const std::filesystem::path& dir)
 {
     if (!IsGameDriveNvme(dir))
     {
-        std::wcerr << L"The game is not running on an NVMe SDD.\n";
+        std::wcerr << L"The game is not running on an NVMe SSD.\n";
         return false;
     }
 
@@ -393,7 +389,7 @@ bool RemoveTitleRgl(const std::filesystem::path& installPath)
 
     if (!DeleteFileW(file.c_str()))
     {
-        switch (DWORD err = GetLastError())
+        switch (const auto err = GetLastError())
         {
         case ERROR_FILE_NOT_FOUND:
             return true;
@@ -442,7 +438,7 @@ bool IsRunningAsAdmin()
 
 bool GrantModifyAccessToUsers(const std::filesystem::path& folderPath)
 {
-    DWORD attr = GetFileAttributesW(folderPath.c_str());
+    const auto attr = GetFileAttributesW(folderPath.c_str());
     if (attr == INVALID_FILE_ATTRIBUTES || !(attr & FILE_ATTRIBUTE_DIRECTORY))
     {
         std::wcerr << L"Folder does not exist: " << folderPath << std::endl;
@@ -493,7 +489,7 @@ bool GrantModifyAccessToUsers(const std::filesystem::path& folderPath)
 
     result = SetNamedSecurityInfoW(std::wstring(folderPath).data(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr, newDACL, nullptr);
 
-    bool success = (result == ERROR_SUCCESS);
+    const auto success = (result == ERROR_SUCCESS);
     if (!success)
         std::wcerr << L"SetNamedSecurityInfoW failed: " << result << std::endl;
 
