@@ -24,6 +24,12 @@
     <ClCompile Include="nt.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="tray.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="worker.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="utils.h">
@@ -33,6 +39,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="nt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="tray.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="worker.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
